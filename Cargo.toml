@@ -1,0 +1,10 @@
+[package]
+name = "src"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dirs = "5"
+serde = { version = "1", features = ["derive"] }
+toml = { version = "0.8", features = ["parse"] }
+anyhow = "1"
