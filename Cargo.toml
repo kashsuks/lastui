@@ -2,6 +2,12 @@
 name = "lastui"
 version = "0.1.0"
 edition = "2024"
+description = "Command line tool to access Last.fm api and commands"
+license = "MIT"
+repository = "https://github.com/kashsuks/lastui"
+readme = "README.md"
+keywords = ["cli", "terminal", "rust", "lastfm"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 dirs = "5"
