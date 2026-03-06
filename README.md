@@ -63,3 +63,35 @@ Expect an output like the following:
     STYLE - Hearts2Hearts
     ABCD (Extended Version) - NAYEON
 ```
+
+### Search Tracks
+
+Another really useful command is the ability to search songs through the terminal!
+
+To try it out, run the following command:
+```bash
+lastui search "name of song"
+```
+
+For example, if I want to search for [Feel Special by TWICE](https://www.youtube.com/watch?v=3ymwOvzhwHs) then I would run the following command:
+
+```bash
+lastui search "Feel Special"  
+```
+
+This will give me the following output:
+
+```bash
+Feel Special - TWICE (692006 listeners)
+Feel Special - HavinMotion (635 listeners)
+Feel Special - Funguypiano (1080 listeners)
+Feel Special - Hikaru Station (1072 listeners)
+Feel Special - TWICE (트와이스) (1259 listeners)
+Feel Special - 트와이스 (699 listeners)
+Feel Special - Pianella Piano (366 listeners)
+feel special - demon gummies (308 listeners)
+Feel Special - TWICE(트와이스) (900 listeners)
+Feel Special - Kairo Mouse (323 listeners)
+```
+
+Go ahead! Try it out :D
