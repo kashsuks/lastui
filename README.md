@@ -2,6 +2,10 @@
 
 A command line tool to acces the Last.fm API and its available commands
 
+![image1](https://i.imgur.com/D7SMCP3.png)
+![image2](https://i.imgur.com/zT7eKaX.png)
+![image3](https://i.imgur.com/NvwkWlq.png)
+
 ## Installation
 
 Lastui can be installed through [crates](https://crates.io) through the following [link](https://crates.io/crates/lastui)
