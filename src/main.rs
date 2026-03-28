@@ -24,8 +24,8 @@ use std::{
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Screen {
-    Dashboard,
+enum TabKind {
+    Home,
     RecentTracks,
     Search,
     Settings,
@@ -50,7 +50,8 @@ enum SettingsField {
 }
 
 struct App {
-    screen: Screen,
+    active_tab: TabKind,
+    open_tabs: Vec<TabKind>,
     config: config::Config,
     search_input: String,
     recent_tracks: Vec<String>,
@@ -80,7 +81,8 @@ enum DashboardMessage {
 impl App {
     fn new(cfg: config::Config) -> Self {
         Self {
-            screen: Screen::Dashboard,
+            active_tab: TabKind::Home,
+            open_tabs: vec![TabKind::Home],
             settings_username: cfg.username.clone(),
             settings_api_key: cfg.api_key.clone(),
             config: cfg,
@@ -95,9 +97,43 @@ impl App {
             settings_field: SettingsField::Username,
             loading_frame: 0,
             last_tick: Instant::now(),
-            status: String::from("q: quit, Tab: switch view, s: commands"),
+            status: String::from("q: quit, Tab: next tab, s: commands, Esc: close tab"),
             should_quit: false,
         }
+    }
+
+    fn open_tab(&mut self, tab: TabKind) {
+        if !self.open_tabs.contains(&tab) {
+            self.open_tabs.push(tab);
+        }
+        self.active_tab = tab;
+    }
+
+    fn cycle_tab(&mut self) {
+        if self.open_tabs.is_empty() {
+            return;
+        }
+
+        let current = self
+            .open_tabs
+            .iter()
+            .position(|tab| *tab == self.active_tab)
+            .unwrap_or(0);
+
+        let next = (current + 1) % self.open_tabs.len();
+        self.active_tab = self.open_tabs[next];
+    }
+
+    fn close_active_tab(&mut self) {
+        if self.active_tab == TabKind::Home {
+            return;
+        }
+
+        if let Some(index) = self.open_tabs.iter().position(|tab| *tab == self.active_tab) {
+            self.open_tabs.remove(index);
+        }
+
+        self.active_tab = *self.open_tabs.last().unwrap_or(&TabKind::Home);
     }
 
     fn tick(&mut self) {
@@ -146,17 +182,17 @@ impl App {
                     if let Some(selected) = matches.get(self.command_selected) {
                         match *selected {
                             "now playing" => {
-                                self.screen = Screen::RecentTracks;
+                                self.open_tab(TabKind::RecentTracks);
                                 self.status = String::from("Opened recent tracks");
                             }
                             "search song" => {
-                                self.screen = Screen::Search;
+                                self.open_tab(TabKind::Search);
                                 self.search_input.clear();
                                 self.search_results.clear();
                                 self.status = String::from("Search for a song");
                             }
                             "settings" => {
-                                self.screen = Screen::Settings;
+                                self.open_tab(TabKind::Settings);
                                 self.settings_username = self.config.username.clone();
                                 self.settings_api_key = self.config.api_key.clone();
                                 self.settings_field = SettingsField::Username;
@@ -180,10 +216,10 @@ impl App {
             return Ok(());
         }
 
-        if self.screen == Screen::Settings {
+        if self.active_tab == TabKind::Settings {
             match key {
                 KeyCode::Esc => {
-                    self.screen = Screen::Dashboard;
+                    self.close_active_tab();
                     self.status = String::from("Closed settings");
                 }
                 KeyCode::Tab | KeyCode::Up | KeyCode::Down => {
@@ -194,7 +230,7 @@ impl App {
                 }
                 KeyCode::Enter => {
                     self.save_settings()?;
-                    self.screen = Screen::Dashboard;
+                    self.active_tab = TabKind::Home;
                 }
                 KeyCode::Backspace => match self.settings_field {
                     SettingsField::Username => {
@@ -222,21 +258,19 @@ impl App {
                 self.command_selected = 0;
             }
             KeyCode::Tab => {
-                self.screen = match self.screen {
-                    Screen::Dashboard => Screen::RecentTracks,
-                    Screen::RecentTracks => Screen::Search,
-                    Screen::Search => Screen::Dashboard,
-                    Screen::Settings => Screen::Dashboard,
-                };
+                self.cycle_tab();
             }
-            KeyCode::Enter if self.screen == Screen::Search => {
+            KeyCode::Esc => {
+                self.close_active_tab();
+            }
+            KeyCode::Enter if self.active_tab == TabKind::Search => {
                 self.search_results = commands::search::fetch(&self.config, &self.search_input)?;
                 self.status = format!("{} results for '{}'", self.search_results.len(), self.search_input);
             }
-            KeyCode::Backspace if self.screen == Screen::Search => {
+            KeyCode::Backspace if self.active_tab == TabKind::Search => {
                 self.search_input.pop();
             }
-            KeyCode::Char(c) if self.screen == Screen::Search => {
+            KeyCode::Char(c) if self.active_tab == TabKind::Search => {
                 self.search_input.push(c);
             }
             _ => {}
@@ -332,6 +366,15 @@ fn centered_rect(area: Rect, width: u16, height: u16) -> Rect {
     vertical[1]
 }
 
+fn tab_title(tab: TabKind) -> &'static str {
+    match tab {
+        TabKind::Home => "Home",
+        TabKind::RecentTracks => "Now Playing",
+        TabKind::Search => "Search Song",
+        TabKind::Settings => "Settings",
+    }
+}
+
 fn ui(frame: &mut Frame, app: &App) {
     let areas = Layout::vertical([
         Constraint::Length(3),
@@ -340,19 +383,22 @@ fn ui(frame: &mut Frame, app: &App) {
     ])
     .split(frame.area());
 
-    let tabs = Tabs::new(vec!["Home", "Recent", "Search"])
-        .select(match app.screen {
-            Screen::Dashboard => 0,
-            Screen::RecentTracks => 1,
-            Screen::Search => 2,
-            Screen::Settings => 0,
-        })
+    let labels: Vec<&str> = app.open_tabs.iter().map(|tab| tab_title(*tab)).collect();
+
+    let selected = app
+        .open_tabs
+        .iter()
+        .position(|tab| *tab == app.active_tab)
+        .unwrap_or(0);
+
+    let tabs = Tabs::new(labels)
+        .select(selected)
         .block(Block::default().borders(Borders::ALL).title("lastui"));
 
     frame.render_widget(tabs, areas[0]);
 
-    match app.screen {
-        Screen::Dashboard => {
+    match app.active_tab {
+        TabKind::Home => {
             match &app.dashboard_state {
                 DashboardState::Loading => {
                     let panel = Paragraph::new(loading_label(app.loading_frame))
@@ -396,7 +442,7 @@ fn ui(frame: &mut Frame, app: &App) {
                 }
             }
         }
-        Screen::RecentTracks => {
+        TabKind::RecentTracks => {
             let items: Vec<ListItem> = app
                 .recent_tracks
                 .iter()
@@ -408,7 +454,7 @@ fn ui(frame: &mut Frame, app: &App) {
 
             frame.render_widget(list, areas[1]);
         }
-        Screen::Search => {
+        TabKind::Search => {
             let inner = Layout::vertical([Constraint::Length(3), Constraint::Min(1)]).split(areas[1]);
 
             let input = Paragraph::new(app.search_input.as_str())
@@ -426,7 +472,7 @@ fn ui(frame: &mut Frame, app: &App) {
             frame.render_widget(input, inner[0]);
             frame.render_widget(list, inner[1]);
         }
-        Screen::Settings => {
+        TabKind::Settings => {
             let rows = Layout::vertical([
                 Constraint::Length(3),
                 Constraint::Length(3),
