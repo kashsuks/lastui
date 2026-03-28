@@ -1,6 +1,6 @@
 [package]
 name = "lastui"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Command line tool to access Last.fm api and commands"
 license = "MIT"
