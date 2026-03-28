@@ -1,5 +1,6 @@
 use crate::config::Config;
 use anyhow::Result;
+use image::{DynamicImage, GenericImageView, imageops::FilterType};
 use serde_json::Value;
 
 pub struct DashboardStats {
@@ -140,4 +141,41 @@ pub fn fetch(cfg: &Config) -> Result<Option<DashboardStats>> {
         total_scrobbles,
         cover_image_url,
     }))
+}
+
+pub fn cover_to_ascii(url: &str, width: u32) -> Result<Vec<String>> {
+    let bytes = reqwest::blocking::get(url)?.bytes()?;
+    let image = image::load_from_memory(&bytes)?;
+    Ok(image_to_ascii(image, width))
+}
+
+fn image_to_ascii(image: DynamicImage, width: u32) -> Vec<String> {
+    let chars: Vec<char> = "@%#*+=-:. ".chars().collect();
+    let grayscale = image.grayscale();
+
+    let (src_w, src_h) = grayscale.dimensions();
+    if src_w == 0 || src_h == 0 {
+        return vec![String::from("No user stats")];
+    }
+
+    let aspect = src_h as f32 / src_w as f32;
+    let height = ((width as f32 * aspect) * 0.55).max(1.0) as u32;
+    let resized = grayscale.resize_exact(width, height, FilterType::Triangle);
+
+    let mut lines = Vec::new();
+
+    for y in 0..resized.height() {
+        let mut line = String::new();
+
+        for x in 0..resized.width() {
+            let pixel = resized.get_pixel(x, y);
+            let value = pixel[0] as f32 / 255.0;
+            let index = ((chars.len() - 1) as f32 * value).round() as usize;
+            line.push(chars[index]);
+        }
+
+        lines.push(line);
+    }
+
+    lines
 }

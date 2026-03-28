@@ -258,21 +258,27 @@ fn main() -> Result<()> {
         std::thread::spawn(move || {
             let message = match commands::dashboard::fetch(&dashboard_cfg) {
                 Ok(Some(stats)) => {
+                    let art = stats
+                        .cover_image_url
+                        .as_deref()
+                        .and_then(|url| commands::dashboard::cover_to_ascii(url, 22).ok())
+                        .unwrap_or_else(|| vec![String::from("No user stats")]);
+
                     let stats_lines = vec![
                         format!("user: {}", stats.username),
                         format!("scrobbles this week: {}", stats.weekly_scrobbles),
-                        format!("top track: {}", stats.top_artist),
+                        format!("top track: {}", stats.top_track),
+                        format!("top artist: {}", stats.top_artist),
                         format!("top album: {}", stats.top_album),
                         format!("now playing: {}", stats.now_playing),
                         format!("total scrobbles: {}", stats.total_scrobbles),
                     ];
 
                     DashboardMessage::Loaded(DashboardData { 
-                        art: vec![String::from("Loading cover...")], 
-                        stats: stats_lines, 
+                        art, 
+                        stats: stats_lines 
                     })
                 }
-
                 Ok(None) => DashboardMessage::Empty,
                 Err(err) => DashboardMessage::Error(err.to_string()),
             };
