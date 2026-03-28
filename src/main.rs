@@ -252,7 +252,7 @@ impl App {
 
         match key {
             KeyCode::Char('q') => self.should_quit = true,
-            KeyCode::Char('s') => {
+            KeyCode::Char('s') if self.active_tab != TabKind::Search => {
                 self.command_palette_open = true;
                 self.command_input.clear();
                 self.command_selected = 0;
