@@ -151,17 +151,47 @@ fn ui(frame: &mut Frame, app: &App) {
 
     match app.screen {
         Screen::Dashboard => {
-            let text = match &app.dashboard_state {
-                DashboardState::Loading => loading_label(app.loading_frame),
-                DashboardState::Loaded(_) => String::from("Dashboard loaded"),
-                DashboardState::Empty => String::from("No user stats"),
-                DashboardState::Error(message) => format!("Error: {message}"),
-            };
+            match &app.dashboard_state {
+                DashboardState::Loading => {
+                    let panel = Paragraph::new(loading_label(app.loading_frame))
+                        .block(Block::default().borders(Borders::ALL).title("Home"));
 
-            let panel = Paragraph::new(text)
-                .block(Block::default().borders(Borders::ALL).title("Home"));
+                    frame.render_widget(panel, areas[1]);
+                }
+                DashboardState::Empty => {
+                    let panel = Paragraph::new("No user stats")
+                        .block(Block::default().borders(Borders::ALL).title("Home"));
 
-            frame.render_widget(panel, areas[1]);
+                    frame.render_widget(panel, areas[1]);
+                }
+                DashboardState::Error(message) => {
+                    let panel = Paragraph::new(format!("Error: {message}"))
+                        .block(Block::default().borders(Borders::ALL).title("Home"));
+
+                    frame.render_widget(panel, areas[1]);
+                }
+                DashboardState::Loaded(data) => {
+                    let columns = Layout::horizontal([
+                        Constraint::Length(26),
+                        Constraint::Min(1),
+                    ])
+                    .split(areas[1]);
+
+                    let art = Paragraph::new(data.art.join("\n"))
+                        .block(Block::default().borders(Borders::ALL).title("Art"));
+
+                    let stats_items: Vec<ListItem> = dashboard_stats_line(data)
+                        .into_iter()
+                        .map(ListItem::new)
+                        .collect();
+
+                    let stats = List::new(stats_items)
+                        .block(Block::default().borders(Borders::ALL).title("Stats"));
+
+                    frame.render_widget(art, columns[0]);
+                    frame.render_widget(stats, columns[1]);
+                }
+            }
         }
         Screen::RecentTracks => {
             let items: Vec<ListItem> = app
