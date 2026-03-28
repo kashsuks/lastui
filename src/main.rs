@@ -11,12 +11,29 @@ use ratatui::{
     prelude::*,
     widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
 };
-use std::io;
+use std::{
+    io,
+    sync::mpsc,
+    time::{Duration, Instant},
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Screen {
+    Dashboard,
     RecentTracks,
     Search,
+}
+
+struct DashboardData {
+    art: Vec<String>,
+    stats: Vec<String>,
+}
+
+enum DashboardState {
+    Loading,
+    Loaded(DashboardData),
+    Empty,
+    Error(String),
 }
 
 struct App {
@@ -24,6 +41,9 @@ struct App {
     search_input: String,
     recent_tracks: Vec<String>,
     search_results: Vec<String>,
+    dashboard_state: DashboardState,
+    loading_frame: usize,
+    last_tick: Instant,
     status: String,
     should_quit: bool,
 }
@@ -35,6 +55,9 @@ impl App {
             search_input: String::new(),
             recent_tracks: Vec::new(),
             search_results: Vec::new(),
+            dashboard_state: DashboardState::Loading,
+            loading_frame: 0,
+            last_tick: Instant::now(),
             status: String::from("q: quit, Tab: switch view, /: search"),
             should_quit: false,
         }
@@ -50,6 +73,7 @@ impl App {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Tab => {
                 self.screen = match self.screen {
+                    Screen::Dashboard => Screen::RecentTracks,
                     Screen::RecentTracks => Screen::Search,
                     Screen::Search => Screen::RecentTracks,
                 };
@@ -90,6 +114,7 @@ fn ui(frame: &mut Frame, app: &App) {
 
     let tabs = Tabs::new(vec!["Recent", "Search"])
         .select(match app.screen {
+            Screen::Dashboard => 0,
             Screen::RecentTracks => 0,
             Screen::Search => 1,
         })
@@ -98,6 +123,19 @@ fn ui(frame: &mut Frame, app: &App) {
     frame.render_widget(tabs, areas[0]);
 
     match app.screen {
+        Screen::Dashboard => {
+            let text = match &app.dashboard_state {
+                DashboardState::Loading => "Loading",
+                DashboardState::Loaded(_) => "Dashboard loaded",
+                DashboardState::Empty => "No user stats",
+                DashboardState::Error(_) => "Failed to load dashboard",
+            };
+
+            let panel = Paragraph::new(text)
+                .block(Block::default().borders(Borders::ALL).title("Home"));
+
+            frame.render_widget(panel, areas[1]);
+        }
         Screen::RecentTracks => {
             let items: Vec<ListItem> = app
                 .recent_tracks
