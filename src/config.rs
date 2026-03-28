@@ -17,7 +17,7 @@ fn default_theme() -> String {
     String::from("catppuccin-mocha")
 }
 
-fn config_path() -> PathBuf {
+pub fn config_path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("lastui")

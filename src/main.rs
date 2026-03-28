@@ -631,6 +631,7 @@ fn ui(frame: &mut Frame, app: &App) {
                 Constraint::Length(3),
                 Constraint::Length(3),
                 Constraint::Length(3),
+                Constraint::Length(3),
                 Constraint::Min(1),
             ])
             .split(areas[1]);
@@ -665,6 +666,10 @@ fn ui(frame: &mut Frame, app: &App) {
                 .style(Style::default().fg(theme.accent).bg(theme.panel_bg))
                 .block(themed_block(theme_title, &theme));
 
+            let config_path = Paragraph::new(config::config_path().display().to_string())
+                .style(Style::default().fg(theme.muted).bg(theme.panel_bg))
+                .block(themed_block("Config Path", &theme));
+
             let help = Paragraph::new("Tab: switch field, Left/Right: theme, Enter: save, Esc: cancel")
                 .style(Style::default().fg(theme.muted).bg(theme.panel_bg))
                 .block(themed_block("Help", &theme));
@@ -672,7 +677,8 @@ fn ui(frame: &mut Frame, app: &App) {
             frame.render_widget(username, rows[0]);
             frame.render_widget(api_key, rows[1]);
             frame.render_widget(theme_picker, rows[2]);
-            frame.render_widget(help, rows[3]);
+            frame.render_widget(config_path, rows[3]);
+            frame.render_widget(help, rows[4]);
         }
     }
 
