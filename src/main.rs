@@ -9,6 +9,7 @@ use crossterm::{
 };
 use ratatui::{
     prelude::*,
+    text::Line,
     widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
 };
 use std::{
@@ -25,7 +26,7 @@ enum Screen {
 }
 
 struct DashboardData {
-    art: Vec<String>,
+    art: Vec<Line<'static>>,
     stats: Vec<String>,
 }
 
@@ -172,12 +173,12 @@ fn ui(frame: &mut Frame, app: &App) {
                 }
                 DashboardState::Loaded(data) => {
                     let columns = Layout::horizontal([
-                        Constraint::Length(26),
+                        Constraint::Length(34),
                         Constraint::Min(1),
                     ])
                     .split(areas[1]);
 
-                    let art = Paragraph::new(data.art.join("\n"))
+                    let art = Paragraph::new(data.art.clone())
                         .block(Block::default().borders(Borders::ALL).title("Art"));
 
                     let stats_items: Vec<ListItem> = dashboard_stats_line(data)
@@ -261,8 +262,8 @@ fn main() -> Result<()> {
                     let art = stats
                         .cover_image_url
                         .as_deref()
-                        .and_then(|url| commands::dashboard::cover_to_ascii(url, 22).ok())
-                        .unwrap_or_else(|| vec![String::from("No user stats")]);
+                        .and_then(|url| commands::dashboard::cover_to_ascii(url, 30).ok())
+                        .unwrap_or_else(|| vec![Line::from("No user stats")]);
 
                     let stats_lines = vec![
                         format!("user: {}", stats.username),
@@ -274,9 +275,9 @@ fn main() -> Result<()> {
                         format!("total scrobbles: {}", stats.total_scrobbles),
                     ];
 
-                    DashboardMessage::Loaded(DashboardData { 
-                        art, 
-                        stats: stats_lines 
+                    DashboardMessage::Loaded(DashboardData {
+                        art,
+                        stats: stats_lines,
                     })
                 }
                 Ok(None) => DashboardMessage::Empty,

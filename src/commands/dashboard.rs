@@ -1,7 +1,13 @@
 use crate::config::Config;
 use anyhow::Result;
-use image::{DynamicImage, GenericImageView, imageops::FilterType};
+use image::{DynamicImage, imageops::FilterType};
+use ratatui::{
+    style::{Color, Style},
+    text::{Line, Span},
+};
 use serde_json::Value;
+
+const ASCII_CHARS: &[char] = &['@', '%', '#', '*', '+', '=', '-', ':', '.'];
 
 pub struct DashboardStats {
     pub username: String,
@@ -143,39 +149,91 @@ pub fn fetch(cfg: &Config) -> Result<Option<DashboardStats>> {
     }))
 }
 
-pub fn cover_to_ascii(url: &str, width: u32) -> Result<Vec<String>> {
+pub fn cover_to_ascii(url: &str, width: u32) -> Result<Vec<Line<'static>>> {
     let bytes = reqwest::blocking::get(url)?.bytes()?;
     let image = image::load_from_memory(&bytes)?;
     Ok(image_to_ascii(image, width))
 }
 
-fn image_to_ascii(image: DynamicImage, width: u32) -> Vec<String> {
-    let chars: Vec<char> = "@%#*+=-:. ".chars().collect();
-    let grayscale = image.grayscale();
+fn image_to_ascii(image: DynamicImage, width: u32) -> Vec<Line<'static>> {
+    let rgb = image.to_rgb8();
 
-    let (src_w, src_h) = grayscale.dimensions();
+    let (src_w, src_h) = rgb.dimensions();
     if src_w == 0 || src_h == 0 {
-        return vec![String::from("No user stats")];
+        return vec![Line::from("No user stats")];
     }
 
     let aspect = src_h as f32 / src_w as f32;
     let height = ((width as f32 * aspect) * 0.55).max(1.0) as u32;
-    let resized = grayscale.resize_exact(width, height, FilterType::Triangle);
+    let resized = image.resize_exact(width, height, FilterType::Triangle).to_rgb8();
 
     let mut lines = Vec::new();
 
     for y in 0..resized.height() {
-        let mut line = String::new();
+        let mut spans = Vec::new();
 
         for x in 0..resized.width() {
             let pixel = resized.get_pixel(x, y);
-            let value = pixel[0] as f32 / 255.0;
-            let index = ((chars.len() - 1) as f32 * value).round() as usize;
-            line.push(chars[index]);
+            let [r, g, b] = pixel.0;
+            let [fg_r, fg_g, fg_b] = boost_color([r, g, b]);
+            let [bg_r, bg_g, bg_b] = darken_color([r, g, b]);
+
+            let brightness =
+                (0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32) / 255.0;
+            let normalized = brightness.powf(0.82);
+            let index = ((ASCII_CHARS.len() - 1) as f32 * normalized).round() as usize;
+            let ch = ASCII_CHARS[index];
+
+            spans.push(Span::styled(
+                ch.to_string(),
+                Style::default()
+                    .fg(Color::Rgb(fg_r, fg_g, fg_b))
+                    .bg(Color::Rgb(bg_r, bg_g, bg_b)),
+            ));
         }
 
-        lines.push(line);
+        lines.push(Line::from(spans));
     }
 
     lines
+}
+
+fn boost_color([r, g, b]: [u8; 3]) -> [u8; 3] {
+    let [r, g, b] = saturate([r, g, b], 1.22);
+    let [r, g, b] = brighten([r, g, b], 1.08);
+    [r, g, b]
+}
+
+fn darken_color([r, g, b]: [u8; 3]) -> [u8; 3] {
+    [
+        scale_channel(r, 0.45),
+        scale_channel(g, 0.45),
+        scale_channel(b, 0.45),
+    ]
+}
+
+fn saturate([r, g, b]: [u8; 3], amount: f32) -> [u8; 3] {
+    let luma = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
+
+    [
+        clamp_channel(luma + (r as f32 - luma) * amount),
+        clamp_channel(luma + (g as f32 - luma) * amount),
+        clamp_channel(luma + (b as f32 - luma) * amount),
+    ]
+}
+
+fn brighten([r, g, b]: [u8; 3], amount: f32) -> [u8; 3] {
+    [
+        scale_channel(r, amount),
+        scale_channel(g, amount),
+        scale_channel(b, amount),
+    ]
+}
+
+fn scale_channel(value: u8, amount: f32) -> u8 {
+    clamp_channel(value as f32 * amount)
+}
+
+fn clamp_channel(value: f32) -> u8 {
+    value.clamp(0.0, 255.0).round() as u8
 }
