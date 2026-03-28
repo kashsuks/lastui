@@ -28,6 +28,7 @@ enum Screen {
     Dashboard,
     RecentTracks,
     Search,
+    Settings,
 }
 
 struct DashboardData {
@@ -42,15 +43,28 @@ enum DashboardState {
     Error(String),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SettingsField {
+    Username,
+    ApiKey,
+}
+
 struct App {
     screen: Screen,
+    config: config::Config,
     search_input: String,
     recent_tracks: Vec<String>,
     search_results: Vec<String>,
     dashboard_state: DashboardState,
+
     command_palette_open: bool,
     command_input: String,
     command_selected: usize,
+
+    settings_username: String,
+    settings_api_key: String,
+    settings_field: SettingsField,
+
     loading_frame: usize,
     last_tick: Instant,
     status: String,
@@ -64,19 +78,24 @@ enum DashboardMessage {
 }
 
 impl App {
-    fn new() -> Self {
+    fn new(cfg: config::Config) -> Self {
         Self {
             screen: Screen::Dashboard,
+            settings_username: cfg.username.clone(),
+            settings_api_key: cfg.api_key.clone(),
+            config: cfg,
             search_input: String::new(),
             recent_tracks: Vec::new(),
             search_results: Vec::new(),
             dashboard_state: DashboardState::Loading,
+
             command_palette_open: false,
             command_input: String::new(),
             command_selected: 0,
+            settings_field: SettingsField::Username,
             loading_frame: 0,
             last_tick: Instant::now(),
-            status: String::from("q: quit, Tab: switch view"),
+            status: String::from("q: quit, Tab: switch view, s: commands"),
             should_quit: false,
         }
     }
@@ -93,7 +112,15 @@ impl App {
         Ok(())
     }
 
-    fn on_key(&mut self, key: KeyCode, cfg: &config::Config) -> Result<()> {
+    fn save_settings(&mut self) -> Result<()> {
+        config::save(&self.settings_api_key, &self.settings_username)?;
+        self.config.username = self.settings_username.clone();
+        self.config.api_key = self.settings_api_key.clone();
+        self.status = String::from("Settings saved");
+        Ok(())
+    }
+
+    fn on_key(&mut self, key: KeyCode) -> Result<()> {
         if self.command_palette_open {
             match key {
                 KeyCode::Esc => {
@@ -128,6 +155,13 @@ impl App {
                                 self.search_results.clear();
                                 self.status = String::from("Search for a song");
                             }
+                            "settings" => {
+                                self.screen = Screen::Settings;
+                                self.settings_username = self.config.username.clone();
+                                self.settings_api_key = self.config.api_key.clone();
+                                self.settings_field = SettingsField::Username;
+                                self.status = String::from("Editing settings");
+                            }
                             _ => {}
                         }
                     }
@@ -146,6 +180,40 @@ impl App {
             return Ok(());
         }
 
+        if self.screen == Screen::Settings {
+            match key {
+                KeyCode::Esc => {
+                    self.screen = Screen::Dashboard;
+                    self.status = String::from("Closed settings");
+                }
+                KeyCode::Tab | KeyCode::Up | KeyCode::Down => {
+                    self.settings_field = match self.settings_field {
+                        SettingsField::Username => SettingsField::ApiKey,
+                        SettingsField::ApiKey => SettingsField::Username,
+                    };
+                }
+                KeyCode::Enter => {
+                    self.save_settings()?;
+                    self.screen = Screen::Dashboard;
+                }
+                KeyCode::Backspace => match self.settings_field {
+                    SettingsField::Username => {
+                        self.settings_username.pop();
+                    }
+                    SettingsField::ApiKey => {
+                        self.settings_api_key.pop();
+                    }
+                },
+                KeyCode::Char(c) => match self.settings_field {
+                    SettingsField::Username => self.settings_username.push(c),
+                    SettingsField::ApiKey => self.settings_api_key.push(c),
+                },
+                _ => {}
+            }
+
+            return Ok(());
+        }
+
         match key {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char('s') => {
@@ -158,10 +226,11 @@ impl App {
                     Screen::Dashboard => Screen::RecentTracks,
                     Screen::RecentTracks => Screen::Search,
                     Screen::Search => Screen::Dashboard,
+                    Screen::Settings => Screen::Dashboard,
                 };
             }
             KeyCode::Enter if self.screen == Screen::Search => {
-                self.search_results = commands::search::fetch(cfg, &self.search_input)?;
+                self.search_results = commands::search::fetch(&self.config, &self.search_input)?;
                 self.status = format!("{} results for '{}'", self.search_results.len(), self.search_input);
             }
             KeyCode::Backspace if self.screen == Screen::Search => {
@@ -201,7 +270,7 @@ fn prompt(label: &str) -> String {
 }
 
 fn command_items() -> Vec<&'static str> {
-    vec!["now playing", "search song"]
+    vec!["now playing", "search song", "settings"]
 }
 
 fn fuzzy_matches(query: &str, candidate: &str) -> bool {
@@ -229,6 +298,20 @@ fn filtered_commands(query: &str) -> Vec<&'static str> {
         .into_iter()
         .filter(|item| fuzzy_matches(query, item))
         .collect()
+}
+
+fn masked_api_key(value: &str) -> String {
+    let char_count = value.chars().count();
+    if char_count <= 4 {
+        return value.to_string();
+    }
+
+    let visible: String = value
+        .chars()
+        .skip(char_count.saturating_sub(4))
+        .collect();
+
+    format!("{}{}", "*".repeat(char_count - 4), visible)
 }
 
 fn centered_rect(area: Rect, width: u16, height: u16) -> Rect {
@@ -262,6 +345,7 @@ fn ui(frame: &mut Frame, app: &App) {
             Screen::Dashboard => 0,
             Screen::RecentTracks => 1,
             Screen::Search => 2,
+            Screen::Settings => 0,
         })
         .block(Block::default().borders(Borders::ALL).title("lastui"));
 
@@ -342,6 +426,39 @@ fn ui(frame: &mut Frame, app: &App) {
             frame.render_widget(input, inner[0]);
             frame.render_widget(list, inner[1]);
         }
+        Screen::Settings => {
+            let rows = Layout::vertical([
+                Constraint::Length(3),
+                Constraint::Length(3),
+                Constraint::Min(1),
+            ])
+            .split(areas[1]);
+
+            let username_title = if app.settings_field == SettingsField::Username {
+                "Username *"
+            } else {
+                "Username"
+            };
+
+            let api_title = if app.settings_field == SettingsField::ApiKey {
+                "API Key *"
+            } else {
+                "API Key"
+            };
+
+            let username = Paragraph::new(app.settings_username.as_str())
+                .block(Block::default().borders(Borders::ALL).title(username_title));
+
+            let api_key = Paragraph::new(masked_api_key(&app.settings_api_key))
+                .block(Block::default().borders(Borders::ALL).title(api_title));
+
+            let help = Paragraph::new("Tab: switch field, Enter: save, Esc: cancel")
+                .block(Block::default().borders(Borders::ALL).title("Help"));
+
+            frame.render_widget(username, rows[0]);
+            frame.render_widget(api_key, rows[1]);
+            frame.render_widget(help, rows[2]);
+        }
     }
 
     if app.command_palette_open {
@@ -400,8 +517,9 @@ fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let result = (|| -> Result<()> {
-        let mut app = App::new();
-        app.load_initial_dat(&cfg)?;
+        let mut app = App::new(cfg.clone());
+        let app_cfg = app.config.clone();
+        app.load_initial_dat(&app_cfg)?;
 
         let (tx, rx) = mpsc::channel::<DashboardMessage>();
         let dashboard_cfg = config::Config {
@@ -456,7 +574,7 @@ fn main() -> Result<()> {
             if event::poll(Duration::from_millis(100))? {
                 if let Event::Key(key) = event::read()? {
                     if key.kind == KeyEventKind::Press {
-                        app.on_key(key.code, &cfg)?;
+                        app.on_key(key.code)?;
                     }
                 }
             }
