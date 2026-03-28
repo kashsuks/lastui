@@ -63,6 +63,13 @@ impl App {
         }
     }
 
+    fn tick(&mut self) {
+        if self.last_tick.elapsed() >= Duration::from_millis(300) {
+            self.loading_frame = (self.loading_frame + 1) % 3;
+            self.last_tick = Instant::now();
+        }
+    }
+
     fn load_initial_dat(&mut self, cfg: &config::Config) -> Result<()> {
         self.recent_tracks = commands::recent_tracks::fetch(cfg, 10)?;
         Ok(())
@@ -92,6 +99,20 @@ impl App {
         }
         Ok(())
     }
+}
+
+fn loading_label(frame: usize) -> String {
+    let dots = match frame % 3 {
+        0 => ".",
+        1 => "..",
+        _ => "...",
+    };
+
+    format!("Loading{dots}")
+}
+
+fn dashboard_stats_line(data: &DashboardData) -> Vec<String> {
+    data.stats.clone()
 }
 
 fn prompt(label: &str) -> String {
@@ -125,10 +146,10 @@ fn ui(frame: &mut Frame, app: &App) {
     match app.screen {
         Screen::Dashboard => {
             let text = match &app.dashboard_state {
-                DashboardState::Loading => "Loading",
-                DashboardState::Loaded(_) => "Dashboard loaded",
-                DashboardState::Empty => "No user stats",
-                DashboardState::Error(_) => "Failed to load dashboard",
+                DashboardState::Loading => loading_label(app.loading_frame),
+                DashboardState::Loaded(_) => String::from("Dashboard loaded"),
+                DashboardState::Empty => String::from("No user stats"),
+                DashboardState::Error(message) => format!("Error: {message}"),
             };
 
             let panel = Paragraph::new(text)
