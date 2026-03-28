@@ -5,12 +5,17 @@ use anyhow::Result;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{
+        disable_raw_mode, 
+        enable_raw_mode, 
+        EnterAlternateScreen, 
+        LeaveAlternateScreen
+    },
 };
 use ratatui::{
     prelude::*,
     text::Line,
-    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Tabs},
 };
 use std::{
     io,
@@ -43,6 +48,9 @@ struct App {
     recent_tracks: Vec<String>,
     search_results: Vec<String>,
     dashboard_state: DashboardState,
+    command_palette_open: bool,
+    command_input: String,
+    command_selected: usize,
     loading_frame: usize,
     last_tick: Instant,
     status: String,
@@ -63,6 +71,9 @@ impl App {
             recent_tracks: Vec::new(),
             search_results: Vec::new(),
             dashboard_state: DashboardState::Loading,
+            command_palette_open: false,
+            command_input: String::new(),
+            command_selected: 0,
             loading_frame: 0,
             last_tick: Instant::now(),
             status: String::from("q: quit, Tab: switch view"),
@@ -83,8 +94,65 @@ impl App {
     }
 
     fn on_key(&mut self, key: KeyCode, cfg: &config::Config) -> Result<()> {
+        if self.command_palette_open {
+            match key {
+                KeyCode::Esc => {
+                    self.command_palette_open = false;
+                    self.command_input.clear();
+                    self.command_selected = 0;
+                }
+                KeyCode::Backspace => {
+                    self.command_input.pop();
+                    self.command_selected = 0;
+                }
+                KeyCode::Up => {
+                    self.command_selected = self.command_selected.saturating_sub(1);
+                }
+                KeyCode::Down => {
+                    let count = filtered_commands(&self.command_input).len();
+                    if count > 0 {
+                        self.command_selected = (self.command_selected + 1).min(count - 1);
+                    }
+                }
+                KeyCode::Enter => {
+                    let matches = filtered_commands(&self.command_input);
+                    if let Some(selected) = matches.get(self.command_selected) {
+                        match *selected {
+                            "now playing" => {
+                                self.screen = Screen::RecentTracks;
+                                self.status = String::from("Opened recent tracks");
+                            }
+                            "search song" => {
+                                self.screen = Screen::Search;
+                                self.search_input.clear();
+                                self.search_results.clear();
+                                self.status = String::from("Search for a song");
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    self.command_palette_open = false;
+                    self.command_input.clear();
+                    self.command_selected = 0;
+                }
+                KeyCode::Char(c) => {
+                    self.command_input.push(c);
+                    self.command_selected = 0;
+                }
+                _ => {}
+            }
+
+            return Ok(());
+        }
+
         match key {
             KeyCode::Char('q') => self.should_quit = true,
+            KeyCode::Char('s') => {
+                self.command_palette_open = true;
+                self.command_input.clear();
+                self.command_selected = 0;
+            }
             KeyCode::Tab => {
                 self.screen = match self.screen {
                     Screen::Dashboard => Screen::RecentTracks,
@@ -130,6 +198,55 @@ fn prompt(label: &str) -> String {
     let mut buf = String::new();
     io::stdin().read_line(&mut buf).unwrap();
     buf.trim().to_string()
+}
+
+fn command_items() -> Vec<&'static str> {
+    vec!["now playing", "search song"]
+}
+
+fn fuzzy_matches(query: &str, candidate: &str) -> bool {
+    if query.is_empty() {
+        return true;
+    }
+
+    let mut query_chars = query.chars().map(|c| c.to_ascii_lowercase());
+    let mut current = query_chars.next();
+
+    for ch in candidate.chars().map(|c| c.to_ascii_lowercase()) {
+        if Some(ch) == current {
+            current = query_chars.next();
+            if current.is_none() {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn filtered_commands(query: &str) -> Vec<&'static str> {
+    command_items()
+        .into_iter()
+        .filter(|item| fuzzy_matches(query, item))
+        .collect()
+}
+
+fn centered_rect(area: Rect, width: u16, height: u16) -> Rect {
+    let horizontal = Layout::horizontal([
+        Constraint::Fill(1),
+        Constraint::Length(width),
+        Constraint::Fill(1),
+    ])
+    .split(area);
+
+    let vertical = Layout::vertical([
+        Constraint::Fill(1),
+        Constraint::Length(height),
+        Constraint::Fill(1),
+    ])
+    .split(horizontal[1]);
+
+    vertical[1]
 }
 
 fn ui(frame: &mut Frame, app: &App) {
@@ -225,6 +342,41 @@ fn ui(frame: &mut Frame, app: &App) {
             frame.render_widget(input, inner[0]);
             frame.render_widget(list, inner[1]);
         }
+    }
+
+    if app.command_palette_open {
+        let popup = centered_rect(frame.area(), 50, 10);
+        let inner = Layout::vertical([
+            Constraint::Length(3),
+            Constraint::Min(1),
+        ])
+        .margin(1)
+        .split(popup);
+
+        let matches = filtered_commands(&app.command_input);
+
+        let input = Paragraph::new(app.command_input.as_str())
+            .block(Block::default().borders(Borders::ALL).title("Command"));
+
+        let items: Vec<ListItem> = matches
+            .iter()
+            .enumerate()
+            .map(|(idx, item)| {
+                let prefix = if idx == app.command_selected { "> " } else { " " };
+                ListItem::new(format!("{prefix}{item}"))
+            })
+        .collect();
+
+        let results = List::new(items)
+            .block(Block::default().borders(Borders::ALL).title("Matches"));
+
+        frame.render_widget(Clear, popup);
+        frame.render_widget(
+            Block::default().borders(Borders::ALL).title("Commands"), 
+            popup,
+        );
+        frame.render_widget(input, inner[0]);
+        frame.render_widget(results, inner[1]);
     }
 
     let status = Paragraph::new(app.status.as_str())
