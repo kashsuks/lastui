@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
     pub api_key: String,
     pub username: String,

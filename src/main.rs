@@ -48,6 +48,12 @@ struct App {
     should_quit: bool,
 }
 
+enum DashboardMessage {
+    Loaded(DashboardData),
+    Empty,
+    Error(String),
+}
+
 impl App {
     fn new() -> Self {
         Self {
@@ -213,11 +219,55 @@ fn main() -> Result<()> {
         let mut app = App::new();
         app.load_initial_dat(&cfg)?;
 
+        let (tx, rx) = mpsc::channel::<DashboardMessage>();
+        let dashboard_cfg = config::Config {
+            api_key: cfg.api_key.clone(),
+            username: cfg.username.clone(),
+        };
+
+        std::thread::spawn(move || {
+            let message = match commands::dashboard::fetch(&dashboard_cfg) {
+                Ok(Some(stats)) => {
+                    let stats_lines = vec![
+                        format!("user: {}", stats.username),
+                        format!("scrobbles this week: {}", stats.weekly_scrobbles),
+                        format!("top track: {}", stats.top_artist),
+                        format!("top album: {}", stats.top_album),
+                        format!("now playing: {}", stats.now_playing),
+                        format!("total scrobbles: {}", stats.total_scrobbles),
+                    ];
+
+                    DashboardMessage::Loaded(DashboardData { 
+                        art: vec![String::from("Loading cover...")], 
+                        stats: stats_lines, 
+                    })
+                }
+
+                Ok(None) => DashboardMessage::Empty,
+                Err(err) => DashboardMessage::Error(err.to_string()),
+            };
+
+            let _ = tx.send(message);
+        });
+
         while !app.should_quit {
+            app.tick();
+
+            if let Ok(message) = rx.try_recv() {
+                app.dashboard_state = match message {
+                    DashboardMessage::Loaded(data) => DashboardState::Loaded(data),
+                    DashboardMessage::Empty => DashboardState::Empty,
+                    DashboardMessage::Error(message) => DashboardState::Error(message),
+                };
+            }
+
             terminal.draw(|frame| ui(frame, &app))?;
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    app.on_key(key.code, &cfg)?;
+
+            if event::poll(Duration::from_millis(100))? {
+                if let Event::Key(key) = event::read()? {
+                    if key.kind == KeyEventKind::Press {
+                        app.on_key(key.code, &cfg)?;
+                    }
                 }
             }
         }
