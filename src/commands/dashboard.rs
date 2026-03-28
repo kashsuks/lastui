@@ -25,7 +25,7 @@ pub fn fetch(cfg: &Config) -> Result<Option<DashboardStats>> {
         cfg.username, cfg.api_key
     );
 
-    let top_arists_url = format!(
+    let top_artists_url = format!(
         "https://ws.audioscrobbler.com/2.0/?method=user.gettopartists&user={}&api_key={}&format=json&period=7day&limit=1",
         cfg.username, cfg.api_key
     );

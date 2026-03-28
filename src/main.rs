@@ -57,14 +57,14 @@ enum DashboardMessage {
 impl App {
     fn new() -> Self {
         Self {
-            screen: Screen::RecentTracks,
+            screen: Screen::Dashboard,
             search_input: String::new(),
             recent_tracks: Vec::new(),
             search_results: Vec::new(),
             dashboard_state: DashboardState::Loading,
             loading_frame: 0,
             last_tick: Instant::now(),
-            status: String::from("q: quit, Tab: switch view, /: search"),
+            status: String::from("q: quit, Tab: switch view"),
             should_quit: false,
         }
     }
@@ -88,7 +88,7 @@ impl App {
                 self.screen = match self.screen {
                     Screen::Dashboard => Screen::RecentTracks,
                     Screen::RecentTracks => Screen::Search,
-                    Screen::Search => Screen::RecentTracks,
+                    Screen::Search => Screen::Dashboard,
                 };
             }
             KeyCode::Enter if self.screen == Screen::Search => {
@@ -139,11 +139,11 @@ fn ui(frame: &mut Frame, app: &App) {
     ])
     .split(frame.area());
 
-    let tabs = Tabs::new(vec!["Recent", "Search"])
+    let tabs = Tabs::new(vec!["Home", "Recent", "Search"])
         .select(match app.screen {
             Screen::Dashboard => 0,
-            Screen::RecentTracks => 0,
-            Screen::Search => 1,
+            Screen::RecentTracks => 1,
+            Screen::Search => 2,
         })
         .block(Block::default().borders(Borders::ALL).title("lastui"));
 
