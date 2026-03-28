@@ -172,23 +172,24 @@ fn ui(frame: &mut Frame, app: &App) {
                     frame.render_widget(panel, areas[1]);
                 }
                 DashboardState::Loaded(data) => {
+                    let home = Block::default().borders(Borders::ALL).title("Home");
+                    let inner = home.inner(areas[1]);
                     let columns = Layout::horizontal([
                         Constraint::Length(34),
                         Constraint::Min(1),
                     ])
-                    .split(areas[1]);
+                    .split(inner);
 
-                    let art = Paragraph::new(data.art.clone())
-                        .block(Block::default().borders(Borders::ALL).title("Art"));
+                    let art = Paragraph::new(data.art.clone());
 
                     let stats_items: Vec<ListItem> = dashboard_stats_line(data)
                         .into_iter()
                         .map(ListItem::new)
                         .collect();
 
-                    let stats = List::new(stats_items)
-                        .block(Block::default().borders(Borders::ALL).title("Stats"));
+                    let stats = List::new(stats_items);
 
+                    frame.render_widget(home, areas[1]);
                     frame.render_widget(art, columns[0]);
                     frame.render_widget(stats, columns[1]);
                 }
